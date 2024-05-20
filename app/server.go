@@ -389,7 +389,7 @@ func main() {
 			handleError("Error accepting connection.", err)
 			continue
 		}
-		handleConnection(conn)
+		go handleConnection(conn)
 	}
 
 }
