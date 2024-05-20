@@ -72,8 +72,6 @@ func checkRoutePatterns(req Http_Request) Http_Response {
 		placeHolder := strings.Repeat("/{str}", i+1)
 		debug(fmt.Sprintf("Current seg: %s Current i: %d Current vtest: %s\r\n", seg, i, placeHolder))
 		if i == 0 {
-			//exact match only, no vars
-			//searchPaths[fmt.Sprintf("%s %s", method, tpath)] = ""
 			searchPath := fmt.Sprintf("%s %s", method, tpath)
 			routeFound = routePatternIsFound(searchPath)
 			if routeFound {
@@ -106,7 +104,6 @@ func checkRoutePatterns(req Http_Request) Http_Response {
 				return response
 			}
 			tpath = leftPath
-			//searchPaths[nextSearch] = value
 		}
 
 	}
