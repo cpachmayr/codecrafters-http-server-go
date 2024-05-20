@@ -37,11 +37,11 @@ func routePatternIsFound(pattern string) bool {
 		return false
 	}
 }
-func tryRouteHandler(pattern string, value string) (Http_Response, error) {
+func tryRouteHandler(pattern string, value string, req Http_Request) (Http_Response, error) {
 	debug(fmt.Sprintln("Trying handler for route: ", pattern))
 	if handler, exists := routes[pattern]; exists {
 		debug("Found route handler, executing...")
-		response := handler(value)
+		response := handler(value, req)
 		return response, nil
 	} else {
 		debug("Could not find handler!")
@@ -49,8 +49,11 @@ func tryRouteHandler(pattern string, value string) (Http_Response, error) {
 	}
 }
 
-func checkRoutePatterns(method string, target string) Http_Response {
+func checkRoutePatterns(req Http_Request) Http_Response {
+	method := req.Method
+	target := req.Target
 	tpath := strings.Clone(target)
+
 	debug("Checking Route Patterns in 'exactness' priority order...\n")
 
 	segs := strings.Split(tpath, "/")
@@ -60,9 +63,9 @@ func checkRoutePatterns(method string, target string) Http_Response {
 	if lastIndex != -1 && lastIndex < len(tpath)-1 {
 		lastPath = tpath[lastIndex+1:]
 	}
-	debug(fmt.Sprintf("Last Index: ", lastIndex))
-	debug(fmt.Sprintf("Last Path: ", lastPath))
-	debug(fmt.Sprintf("Segments: ", segCount))
+	debug(fmt.Sprintf("Last Index: %d", lastIndex))
+	debug(fmt.Sprintf("Last Path: %s", lastPath))
+	debug(fmt.Sprintf("Segments: %d", segCount))
 
 	routeFound := false
 	for i, seg := range segs {
@@ -75,7 +78,7 @@ func checkRoutePatterns(method string, target string) Http_Response {
 			routeFound = routePatternIsFound(searchPath)
 			if routeFound {
 				debug(fmt.Sprintln("exact path found: ", searchPath))
-				response, err := tryRouteHandler(searchPath, "")
+				response, err := tryRouteHandler(searchPath, "", req)
 				if err != nil {
 					handleError("Error in trying to execute handler", err)
 				}
@@ -88,7 +91,7 @@ func checkRoutePatterns(method string, target string) Http_Response {
 
 		debug("No exact path match found... checking alternate routes")
 		idx := strings.LastIndex(tpath, "/")
-		if routeFound != true && idx != -1 && idx < len(tpath) {
+		if !routeFound && idx != -1 && idx < len(tpath) {
 			leftPath := tpath[:idx]
 			value := target[idx+1:]
 			nextSearch := fmt.Sprintf("%s %s%s", method, leftPath, placeHolder)
@@ -96,7 +99,7 @@ func checkRoutePatterns(method string, target string) Http_Response {
 			routeFound = routePatternIsFound(nextSearch)
 			if routeFound {
 				debug(fmt.Sprintln("alternate path found: ", nextSearch))
-				response, err := tryRouteHandler(nextSearch, value)
+				response, err := tryRouteHandler(nextSearch, value, req)
 				if err != nil {
 					handleError("Error in trying to execute handler", err)
 				}
@@ -108,7 +111,7 @@ func checkRoutePatterns(method string, target string) Http_Response {
 
 	}
 	// No patterns found
-	if routeFound != true {
+	if !routeFound {
 		debug("No matching route patterns found!")
 	}
 	return NOTFOUND
@@ -215,22 +218,10 @@ var NOTFOUND = Http_Response{
 
 // Request Handlers
 
-/*
-func matchRequestRoute(req Http_Request, reqMap map[string]string) (string, map[string]string) {
-	target := req.Target
-  matchRoutes :=
-	//TODO: look for exact path match
-	//TODO: if no exact path match, peel off end and assign to $1, and repear search for /path/$1
-
-	//pathSegements := strings.Split(target, "/")
-
-}
-*/
-
 func handleRequests(conn net.Conn, req Http_Request) {
 	debug("Handling a new connection request...")
 	debug("Building route search map...")
-	response := checkRoutePatterns(req.Method, req.Target)
+	response := checkRoutePatterns(req)
 	responseWriter(conn, response)
 }
 
@@ -254,11 +245,10 @@ func responseWriter(conn net.Conn, resp Http_Response) {
 }
 
 // Route Handlers
-// var routes = make(map[string]Http_Response)
-// var routes = make(map[string]func() Http_Response)
-var routes = make(map[string]func(string) Http_Response)
 
-func rootHandler(val string) Http_Response {
+var routes = make(map[string]func(string, Http_Request) Http_Response)
+
+func rootHandler(pathVals string, req Http_Request) Http_Response {
 	resp := Http_Response{
 		Version: HTTPV,
 		Status:  200,
@@ -269,13 +259,25 @@ func rootHandler(val string) Http_Response {
 	return resp
 }
 
-func echoHandler(val string) Http_Response {
+func echoHandler(pathVals string, req Http_Request) Http_Response {
 	resp := Http_Response{
 		Version: HTTPV,
 		Status:  200,
 		Reason:  "OK",
 		Headers: map[string]string{"Content-Type": "text/plain"},
-		Body:    val,
+		Body:    pathVals,
+	}
+	return resp
+}
+
+func userAgentHandler(pathVals string, req Http_Request) Http_Response {
+	agent := req.Headers["User-Agent"]
+	resp := Http_Response{
+		Version: HTTPV,
+		Status:  200,
+		Reason:  "OK",
+		Headers: map[string]string{"Content-Type": "text/plain"},
+		Body:    agent,
 	}
 	return resp
 }
@@ -285,6 +287,7 @@ func define_routes() {
 
 	routes["GET /"] = rootHandler
 	routes["GET /echo/{str}"] = echoHandler
+	routes["GET /user-agent"] = userAgentHandler
 
 	debug("Routes ready.")
 }
