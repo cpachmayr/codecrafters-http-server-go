@@ -259,10 +259,16 @@ var routes = make(map[*regexp.Regexp]func(Http_Response) Http_Response)
 */
 func EchoHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	//w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, vars["str"])
+}
+
+func HomeHandler(w http.ResponseWriter, r *http.Request) {
+	// vars := mux.Vars(r)
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	// fmt.Fprintf(w)
 }
 
 func main() {
@@ -272,7 +278,7 @@ func main() {
 	var wait time.Duration
 
 	r := mux.NewRouter()
-	// r.HandleFunc("/", HomeHandler)
+	r.HandleFunc("/", HomeHandler)
 	r.HandleFunc("/echo/{str}", EchoHandler)
 	http.Handle("/", r)
 
