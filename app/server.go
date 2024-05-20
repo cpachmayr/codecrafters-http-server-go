@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -12,15 +13,35 @@ import (
 )
 
 // App Helpers
+var DEBUG = false
+var DIRPATH = ""
+
 func handleError(msg string, err error) {
 	fmt.Printf("Encountered error:\n%s\n%v", msg, err)
 	os.Exit(1)
 }
 
-const DEBUG = false
+func pathExists(path string) bool {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		debug("File or directory does not exist.")
+		return false
+	} else {
+		debug("File or directory exists.")
+		return true
+	}
+}
+
+func define_flags() {
+	// Get flags from command line
+	debug := flag.Bool("debug", true, "turn debugging on")
+	directory := flag.String("directory", "", "directory location")
+	flag.Parse()
+	DEBUG = *debug
+	DIRPATH = *directory
+}
 
 func debug(msg string) {
-	if DEBUG == true {
+	if DEBUG {
 		fmt.Println(msg)
 	}
 }
@@ -218,11 +239,51 @@ var NOTFOUND = Http_Response{
 func handleRequests(conn net.Conn, req Http_Request) {
 	debug("Handling a new connection request...")
 	debug("Building route search map...")
-	response := checkRoutePatterns(req)
-	responseWriter(conn, response)
+	res := checkRoutePatterns(req)
+	// Check for Response Content Type
+	contentType := res.Headers["Content-Type"]
+	switch contentType {
+	case "application/octet-stream":
+		{
+			responseFileWriter(conn, res)
+		}
+	case "text/plain":
+		{
+			responseWriter(conn, res)
+		}
+	}
 }
 
 // Response Handlers
+func responseFileWriter(conn net.Conn, resp Http_Response) {
+	debug(fmt.Sprintf("Using responseFileWriter for file: %s", resp.Body))
+	filePath := resp.Body
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Fprintln(conn, "HTTP/1.1 404 Not Found")
+		return
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(conn)
+	initResponse := fmt.Sprintf("%s %d %s\r\n", resp.Version, resp.Status, resp.Reason)
+	debug("initResponse:\r\n")
+	debug(initResponse)
+	headersResponse := headersMapToString(resp.Headers)
+	debug("headersResponse:\r\n")
+	debug(headersResponse)
+	fmt.Fprintln(writer, initResponse)
+	fmt.Fprintln(conn, headersResponse)
+	fmt.Fprintln(conn, CRLF) // end of headers
+
+	_, err = bufio.NewReader(file).WriteTo(writer)
+	if err != nil {
+		fmt.Fprintf(conn, "%s %d %s", resp.Version, 500, "Internal Server Error\r\n")
+		handleError("Internal server error writing file.", err)
+		return
+	}
+	writer.Flush()
+}
 
 func responseWriter(conn net.Conn, resp Http_Response) {
 	debug("Sending connection response...")
@@ -279,12 +340,53 @@ func userAgentHandler(pathVals string, req Http_Request) Http_Response {
 	return resp
 }
 
+func fileRequestHandler(pathVals string, req Http_Request) Http_Response {
+	// Set initial values, presume not found
+	status := 404
+	reason := "File not found."
+	filename := pathVals
+
+	dirPathExists := pathExists(DIRPATH)
+	if !dirPathExists {
+		debug(fmt.Sprintf("Could not find dir path: %s", DIRPATH))
+	}
+	pathSep := string(os.PathSeparator)
+	debug(fmt.Sprintf("filename: %s", filename))
+	fullpath := DIRPATH + pathSep + filename
+	debug(fmt.Sprintf("fullpath: %s", fullpath))
+	filePathExists := pathExists(fullpath)
+	if !filePathExists {
+		debug("Path to file DOES NOT exist!")
+	} else {
+		debug("Path to file exists!")
+		status = 200
+		reason = "OK"
+		file, err := os.Open(fullpath)
+		if err != nil {
+			handleError("File not found!", err)
+			return NOTFOUND
+		}
+		defer file.Close()
+	}
+
+	// set the body to fullpath, depend on writer to detect file for streaming to writer
+	resp := Http_Response{
+		Version: HTTPV,
+		Status:  status,
+		Reason:  reason,
+		Headers: map[string]string{"Content-Type": "application/octet-stream", "Content-Disposition": "attachment; filename=" + filename},
+		Body:    fullpath,
+	}
+	return resp
+}
+
 func define_routes() {
 	debug("Routes being defined...")
 
 	routes["GET /"] = rootHandler
 	routes["GET /echo/{str}"] = echoHandler
 	routes["GET /user-agent"] = userAgentHandler
+	routes["GET /files/{str}"] = fileRequestHandler
 
 	debug("Routes ready.")
 }
@@ -373,6 +475,7 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
+	define_flags()
 	define_routes()
 
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
