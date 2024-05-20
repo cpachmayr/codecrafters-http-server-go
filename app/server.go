@@ -259,6 +259,8 @@ var routes = make(map[*regexp.Regexp]func(Http_Response) Http_Response)
 */
 func EchoHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
+	//w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, vars["str"])
 }
