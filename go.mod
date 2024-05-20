@@ -9,5 +9,3 @@
 module github.com/codecrafters-io/http-server-starter-go
 
 go 1.22
-
-require github.com/gorilla/mux v1.8.1
