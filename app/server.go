@@ -13,8 +13,8 @@ import (
 )
 
 // App Helpers
-var DEBUG = false
-var DIRPATH = ""
+var DEBUG bool
+var DIRPATH string
 
 func handleError(msg string, err error) {
 	fmt.Printf("Encountered error:\n%s\n%v", msg, err)
@@ -33,15 +33,23 @@ func pathExists(path string) bool {
 
 func define_flags() {
 	// Get flags from command line
-	debug := flag.Bool("debug", true, "turn debugging on")
+	debugOn := flag.Bool("debug-on", true, "turn debugging on")
+	debugOff := flag.Bool("debug-off", false, "turn debugging off")
 	directory := flag.String("directory", "", "directory location")
 	flag.Parse()
-	DEBUG = *debug
+	if *debugOn {
+		DEBUG = true
+	} else {
+		DEBUG = false
+	}
+	if *debugOff {
+		DEBUG = false
+	}
 	DIRPATH = *directory
 }
 
 func debug(msg string) {
-	if DEBUG == true {
+	if DEBUG {
 		fmt.Println(msg)
 	}
 }
@@ -488,7 +496,9 @@ func main() {
 
 	define_flags()
 	define_routes()
-
+	if DEBUG {
+		fmt.Println("Debugging turned on")
+	}
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		handleError("Failed to bind to 0.0.0.0 (localhost) port 4221", err)
