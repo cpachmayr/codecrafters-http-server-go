@@ -273,8 +273,9 @@ func responseFileWriter(conn net.Conn, resp Http_Response) {
 	debug("headersResponse:\r\n")
 	debug(headersResponse)
 	fmt.Fprintln(writer, initResponse)
-	fmt.Fprintln(writer, headersResponse)
-	fmt.Fprintln(writer, CRLF) // end of headers
+	writer.WriteString(initResponse)
+	writer.WriteString(headersResponse)
+	writer.WriteString(DoubleCRLF) // end of headers
 
 	_, err = bufio.NewReader(file).WriteTo(writer)
 	if err != nil {
