@@ -265,6 +265,16 @@ func responseFileWriter(conn net.Conn, resp Http_Response) {
 	}
 	defer file.Close()
 
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fmt.Fprintf(conn, "%s %d %s", resp.Version, 500, "Internal Server Error\r\n")
+		handleError("Internal server error reading file info.", err)
+		return
+	}
+	fileSize := fileInfo.Size()
+	contentLength := fmt.Sprintf("%d", fileSize)
+	resp.Headers["Content-Length"] = contentLength
+
 	writer := bufio.NewWriter(conn)
 	initResponse := fmt.Sprintf("%s %d %s\r\n", resp.Version, resp.Status, resp.Reason)
 	debug("initResponse:\r\n")
