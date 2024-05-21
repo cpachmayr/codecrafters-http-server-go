@@ -46,6 +46,8 @@ func define_flags() {
 		DEBUG = false
 	}
 	DIRPATH = *directory
+	debugf("--directory: %s found: %v", DIRPATH, pathExists(DIRPATH))
+
 }
 
 func debug(msg string) {
@@ -54,23 +56,28 @@ func debug(msg string) {
 	}
 }
 
+func debugf(msgformat string, args ...interface{}) {
+	formattedMsg := fmt.Sprintf(msgformat, args...)
+	debug(formattedMsg)
+}
+
 // http Helpers
 
 func routePatternIsFound(pattern string) bool {
 	_, ok := routes[pattern]
 	if ok {
-		debug(fmt.Sprintf("Route pattern found: %s", pattern))
+		debugf("Route pattern found: %s", pattern)
 		return true
 	} else {
-		debug(fmt.Sprintf("Route not found: %s", pattern))
+		debugf("Route not found: %s", pattern)
 		return false
 	}
 }
-func tryRouteHandler(pattern string, value string, req Http_Request) (Http_Response, error) {
-	debug(fmt.Sprintln("Trying handler for route: ", pattern))
+func tryRouteHandler(pattern string, value string, conn net.Conn, req Http_Request) (Http_Response, error) {
+	debugf("Trying handler for route: ", pattern)
 	if handler, exists := routes[pattern]; exists {
 		debug("Found route handler, executing...")
-		response := handler(value, req)
+		response := handler(value, conn, req)
 		return response, nil
 	} else {
 		debug("Could not find handler!")
@@ -78,7 +85,7 @@ func tryRouteHandler(pattern string, value string, req Http_Request) (Http_Respo
 	}
 }
 
-func checkRoutePatterns(req Http_Request) Http_Response {
+func checkRoutePatterns(conn net.Conn, req Http_Request) Http_Response {
 	method := req.Method
 	target := req.Target
 	tpath := strings.Clone(target)
@@ -92,20 +99,20 @@ func checkRoutePatterns(req Http_Request) Http_Response {
 	if lastIndex != -1 && lastIndex < len(tpath)-1 {
 		lastPath = tpath[lastIndex+1:]
 	}
-	debug(fmt.Sprintf("Last Index: %d", lastIndex))
-	debug(fmt.Sprintf("Last Path: %s", lastPath))
-	debug(fmt.Sprintf("Segments: %d", segCount))
+	debugf("Last Index: %d", lastIndex)
+	debugf("Last Path: %s", lastPath)
+	debugf("Segments: %d", segCount)
 
 	routeFound := false
 	for i, seg := range segs {
 		placeHolder := strings.Repeat("/{str}", i+1)
-		debug(fmt.Sprintf("Current seg: %s Current i: %d Current vtest: %s\r\n", seg, i, placeHolder))
+		debugf("Current seg: %s Current i: %d Current vtest: %s\r\n", seg, i, placeHolder)
 		if i == 0 {
 			searchPath := fmt.Sprintf("%s %s", method, tpath)
 			routeFound = routePatternIsFound(searchPath)
 			if routeFound {
-				debug(fmt.Sprintln("exact path found: ", searchPath))
-				response, err := tryRouteHandler(searchPath, "", req)
+				debugf("exact path found: %s", searchPath)
+				response, err := tryRouteHandler(searchPath, "", conn, req)
 				if err != nil {
 					handleError("Error in trying to execute handler", err)
 				}
@@ -122,11 +129,11 @@ func checkRoutePatterns(req Http_Request) Http_Response {
 			leftPath := tpath[:idx]
 			value := target[idx+1:]
 			nextSearch := fmt.Sprintf("%s %s%s", method, leftPath, placeHolder)
-			debug(fmt.Sprintf("\r\nChecking route: %s with value: %s\r\n", nextSearch, value))
+			debugf("\r\nChecking route: %s with value: %s\r\n", nextSearch, value)
 			routeFound = routePatternIsFound(nextSearch)
 			if routeFound {
-				debug(fmt.Sprintln("alternate path found: ", nextSearch))
-				response, err := tryRouteHandler(nextSearch, value, req)
+				debugf("alternate path found: %s", nextSearch)
+				response, err := tryRouteHandler(nextSearch, value, conn, req)
 				if err != nil {
 					handleError("Error in trying to execute handler", err)
 				}
@@ -140,14 +147,14 @@ func checkRoutePatterns(req Http_Request) Http_Response {
 	if !routeFound {
 		debug("No matching route patterns found!")
 	}
-	return NOTFOUND
+	return NOT_FOUND
 }
 
 func stringByteLenAsString(s string) string {
 	debug("Calculating string content length in bytes...")
 	length := len([]byte(s))
 	valueStr := strconv.Itoa(length)
-	debug(fmt.Sprintf("Calculated Bytes: %s", valueStr))
+	debugf("Calculated Bytes: %s", valueStr)
 	return fmt.Sprintf("Content-Length: %s\r\n", valueStr)
 }
 
@@ -234,10 +241,26 @@ var OK = Http_Response{
 	Body:    "" + CRLF,
 }
 
-var NOTFOUND = Http_Response{
+var NOT_FOUND = Http_Response{
 	Version: HTTPV,
 	Status:  404,
 	Reason:  "Not Found",
+	Headers: map[string]string{"Content-Type": "text/plain"},
+	Body:    "",
+}
+
+var BAD_REQUEST = Http_Response{
+	Version: HTTPV,
+	Status:  400,
+	Reason:  "Bad Request",
+	Headers: map[string]string{"Content-Type": "text/plain"},
+	Body:    "",
+}
+
+var SERVER_ERROR = Http_Response{
+	Version: HTTPV,
+	Status:  500,
+	Reason:  "Internal Server Error",
 	Headers: map[string]string{"Content-Type": "text/plain"},
 	Body:    "",
 }
@@ -247,7 +270,7 @@ var NOTFOUND = Http_Response{
 func handleRequests(conn net.Conn, req Http_Request) {
 	debug("Handling a new connection request...")
 	debug("Building route search map...")
-	res := checkRoutePatterns(req)
+	res := checkRoutePatterns(conn, req)
 	// Check for Response Content Type
 	contentType := res.Headers["Content-Type"]
 	switch contentType {
@@ -264,7 +287,7 @@ func handleRequests(conn net.Conn, req Http_Request) {
 
 // Response Handlers
 func responseFileWriter(conn net.Conn, resp Http_Response) {
-	debug(fmt.Sprintf("Using responseFileWriter for file: %s", resp.Body))
+	debugf("Using responseFileWriter for file: %s", resp.Body)
 	filePath := resp.Body
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -290,7 +313,7 @@ func responseFileWriter(conn net.Conn, resp Http_Response) {
 	headersResponse := headersMapToString(resp.Headers)
 	debug("headersResponse:\r\n")
 	debug(headersResponse)
-	//fmt.Fprintln(writer, initResponse)
+
 	writer.WriteString(initResponse)
 	writer.WriteString(headersResponse)
 	writer.WriteString(CRLF) // end of headers
@@ -313,19 +336,19 @@ func responseWriter(conn net.Conn, resp Http_Response) {
 	debug("---------")
 	writer := bufio.NewWriter(conn)
 	writeResult, err := writer.WriteString(response)
-	debug(fmt.Sprintf("writeResult: %v", writeResult))
+	debugf("writeResult: %v", writeResult)
 	if err != nil {
 		handleError("Unable to write response", err)
 	}
 	writer.Flush()
-	debug(fmt.Sprintf("Sent response: %s", response))
+	debugf("Sent response: %s", response)
 }
 
 // Route Handlers
 
-var routes = make(map[string]func(string, Http_Request) Http_Response)
+var routes = make(map[string]func(string, net.Conn, Http_Request) Http_Response)
 
-func rootHandler(pathVals string, req Http_Request) Http_Response {
+func rootHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
 	resp := Http_Response{
 		Version: HTTPV,
 		Status:  200,
@@ -336,7 +359,7 @@ func rootHandler(pathVals string, req Http_Request) Http_Response {
 	return resp
 }
 
-func echoHandler(pathVals string, req Http_Request) Http_Response {
+func echoHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
 	resp := Http_Response{
 		Version: HTTPV,
 		Status:  200,
@@ -347,7 +370,7 @@ func echoHandler(pathVals string, req Http_Request) Http_Response {
 	return resp
 }
 
-func userAgentHandler(pathVals string, req Http_Request) Http_Response {
+func userAgentHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
 	agent := req.Headers["User-Agent"]
 	resp := Http_Response{
 		Version: HTTPV,
@@ -359,7 +382,7 @@ func userAgentHandler(pathVals string, req Http_Request) Http_Response {
 	return resp
 }
 
-func fileRequestHandler(pathVals string, req Http_Request) Http_Response {
+func fileRequestHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
 	// Set initial values, presume not found
 	status := 404
 	reason := "File not found."
@@ -367,12 +390,12 @@ func fileRequestHandler(pathVals string, req Http_Request) Http_Response {
 
 	dirPathExists := pathExists(DIRPATH)
 	if !dirPathExists {
-		debug(fmt.Sprintf("Could not find dir path: %s", DIRPATH))
+		debugf("Could not find dir path: %s", DIRPATH)
 	}
 	pathSep := string(os.PathSeparator)
-	debug(fmt.Sprintf("filename: %s", filename))
+	debugf("filename: %s", filename)
 	fullpath := DIRPATH + pathSep + filename
-	debug(fmt.Sprintf("fullpath: %s", fullpath))
+	debugf("fullpath: %s", fullpath)
 	filePathExists := pathExists(fullpath)
 	if !filePathExists {
 		debug("Path to file DOES NOT exist!")
@@ -383,7 +406,7 @@ func fileRequestHandler(pathVals string, req Http_Request) Http_Response {
 		file, err := os.Open(fullpath)
 		if err != nil {
 			handleError("File not found!", err)
-			return NOTFOUND
+			return NOT_FOUND
 		}
 		defer file.Close()
 	}
@@ -399,6 +422,68 @@ func fileRequestHandler(pathVals string, req Http_Request) Http_Response {
 	return resp
 }
 
+func filePostHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
+	debugf("filePostHandler request with vals: %s", pathVals)
+
+	// Look for Content-Length
+	contentLength := req.Headers["Content-Length"]
+	length, err := strconv.Atoi(contentLength)
+	if err != nil {
+		return BAD_REQUEST
+	}
+
+	// Open file path for writing
+	filePath := DIRPATH + string(os.PathSeparator) + pathVals
+	debugf("Attempting to open filepath: %s", filePath)
+	destFile, err := os.Create(filePath)
+	if err != nil {
+		return SERVER_ERROR
+	}
+	defer destFile.Close()
+
+	// Create buffer reader for content
+	reader := bufio.NewReader(conn)
+	// Begin writing to file
+	debug("Begin writing file...")
+	bufWriter := bufio.NewWriter(destFile)
+	buf := make([]byte, 1024)
+	remaining := int64(length)
+	for remaining > 0 {
+		readSize := 1024
+		if remaining < int64(readSize) {
+			readSize = int(remaining)
+		}
+		n, err := reader.Read(buf[:readSize])
+		if err != nil {
+			debug("Error reading file!")
+			return SERVER_ERROR
+		}
+		_, err = bufWriter.Write(buf[:n])
+		if err != nil {
+			debug("Error writing file!")
+			return SERVER_ERROR
+		}
+		remaining -= int64(n)
+
+		// Validate file writing
+		debug("Validating and flushing...")
+		err = bufWriter.Flush()
+		if err != nil {
+			debug("Problem flushing writer!")
+			return SERVER_ERROR
+		}
+	}
+	// Send Response
+	resp := Http_Response{
+		Version: HTTPV,
+		Status:  201,
+		Reason:  "OK",
+		Headers: make(map[string]string),
+		Body:    "" + CRLF,
+	}
+	return resp
+}
+
 func define_routes() {
 	debug("Routes being defined...")
 
@@ -406,6 +491,7 @@ func define_routes() {
 	routes["GET /echo/{str}"] = echoHandler
 	routes["GET /user-agent"] = userAgentHandler
 	routes["GET /files/{str}"] = fileRequestHandler
+	routes["POST /files/{str}"] = filePostHandler
 
 	debug("Routes ready.")
 }
@@ -436,7 +522,7 @@ func connStringToRequest(conn net.Conn) Http_Request {
 			method = parts[0]
 			target = parts[1]
 			version = parts[2]
-			debug(fmt.Sprintf("Parsed method: %s\nParsed target: %s\nParsed version: %s", method, target, version))
+			debugf("Parsed method: %s\nParsed target: %s\nParsed version: %s", method, target, version)
 		}
 		if lineCount > 0 {
 			// get headers
@@ -476,9 +562,9 @@ func connStringToRequest(conn net.Conn) Http_Request {
 		Body:    string(body),
 	}
 
-	debug(fmt.Sprintf("Headers:\r\n%s", headers))
-	debug(fmt.Sprintf("Body:\r\n%s", string(body)))
-	debug(fmt.Sprintf("Received request:\r\n%s", requestString))
+	debugf("Headers:\r\n%s", headers)
+	debugf("Body:\r\n%s", string(body))
+	debugf("Received request:\r\n%s", requestString)
 
 	return connRequest
 }
