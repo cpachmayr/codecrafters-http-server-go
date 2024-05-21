@@ -42,7 +42,7 @@ func define_flags() {
 
 func debug(msg string) {
 	if DEBUG {
-		fmt.Println(msg)
+		//fmt.Println(msg)
 	}
 }
 
@@ -272,7 +272,7 @@ func responseFileWriter(conn net.Conn, resp Http_Response) {
 	headersResponse := headersMapToString(resp.Headers)
 	debug("headersResponse:\r\n")
 	debug(headersResponse)
-	fmt.Fprintln(writer, initResponse)
+	//fmt.Fprintln(writer, initResponse)
 	writer.WriteString(initResponse)
 	writer.WriteString(headersResponse)
 	writer.WriteString(DoubleCRLF) // end of headers
