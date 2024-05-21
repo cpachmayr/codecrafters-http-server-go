@@ -41,8 +41,8 @@ func define_flags() {
 }
 
 func debug(msg string) {
-	if DEBUG {
-		//fmt.Println(msg)
+	if DEBUG == true {
+		fmt.Println(msg)
 	}
 }
 
@@ -260,7 +260,7 @@ func responseFileWriter(conn net.Conn, resp Http_Response) {
 	filePath := resp.Body
 	file, err := os.Open(filePath)
 	if err != nil {
-		fmt.Fprintln(conn, "HTTP/1.1 404 Not Found")
+		fmt.Fprintf(conn, "%s %d %s\r\n", resp.Version, 404, "Not Found\r\n")
 		return
 	}
 	defer file.Close()
