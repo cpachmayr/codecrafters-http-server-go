@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // App Helpers
@@ -46,6 +47,12 @@ func define_flags() {
 		DEBUG = false
 	}
 	DIRPATH = *directory
+	// Add OS separator to the end if needed
+	dirPathEnd := string(DIRPATH[len(DIRPATH)-1])
+	pathSeparatorFound := dirPathEnd == string(os.PathSeparator)
+	if !pathSeparatorFound {
+		DIRPATH += string(os.PathSeparator)
+	}
 	debugf("--directory: %s found: %v", DIRPATH, pathExists(DIRPATH))
 
 }
@@ -185,18 +192,20 @@ func headersStringToMap(headers string) map[string]string {
 	return headersMap
 }
 
-func buildResponseString(resp Http_Response) string {
+// Foo this is squat
+
+func buildResponseString(res Http_Response) string {
 	debug("building response string from Http_Response fields...")
 	debug("---------")
-	headers := headersMapToString(resp.Headers)
+	headers := headersMapToString(res.Headers)
 	debug("Adding Content-Length to headers...")
-	headers += stringByteLenAsString(resp.Body)
+	headers += stringByteLenAsString(res.Body)
 	debug("---------")
 	debug("Built headers string:\r\n")
 	debug(headers)
 	debug("Creating full resposne string...")
 	debug("---------")
-	respString := fmt.Sprintf("%s %d %s\r\n%s\r\n%s", resp.Version, resp.Status, resp.Reason, headers, resp.Body)
+	respString := fmt.Sprintf("%s %d %s\r\n%s\r\n%s", res.Version, res.Status, res.Reason, headers, res.Body)
 	debug("Full response string:")
 	debug("---------")
 	debug(respString)
@@ -271,46 +280,38 @@ func handleRequests(conn net.Conn, req Http_Request) {
 	debug("Handling a new connection request...")
 	debug("Building route search map...")
 	res := checkRoutePatterns(conn, req)
-	// Check for Response Content Type
-	contentType := res.Headers["Content-Type"]
-	switch contentType {
-	case "application/octet-stream":
-		{
-			responseFileWriter(conn, res)
-		}
-	case "text/plain":
-		{
-			responseWriter(conn, res)
-		}
-	}
+	debug("Sending response to responseWriter")
+	responseWriter(conn, res)
 }
 
 // Response Handlers
-func responseFileWriter(conn net.Conn, resp Http_Response) {
-	debugf("Using responseFileWriter for file: %s", resp.Body)
-	filePath := resp.Body
+/* func responseFileWriter(value, conn net.Conn, res Http_Response) {
+	debugf("Using responseFileWriter for file: %s", res.Body)
+	// Body is now file, so not awkwardly passing by convention of filePath := res.Body
+	// So we need to create file path from here
+
 	file, err := os.Open(filePath)
 	if err != nil {
-		fmt.Fprintf(conn, "%s %d %s\r\n", resp.Version, 404, "Not Found\r\n")
+		fmt.Fprintf(conn, "%s %d %s\r\n", res.Version, 404, "Not Found\r\n")
 		return
 	}
 	defer file.Close()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		fmt.Fprintf(conn, "%s %d %s", resp.Version, 500, "Internal Server Error\r\n")
+		fmt.Fprintf(conn, "%s %d %s", res.Version, 500, "Internal Server Error\r\n")
 		handleError("Internal server error reading file info.", err)
 		return
 	}
 	fileSize := fileInfo.Size()
 	contentLength := fmt.Sprintf("%d", fileSize)
-	resp.Headers["Content-Length"] = contentLength
+	res.Headers["Content-Length"] = contentLength
 
 	writer := bufio.NewWriter(conn)
-	initResponse := fmt.Sprintf("%s %d %s\r\n", resp.Version, resp.Status, resp.Reason)
+	initResponse := fmt.Sprintf("%s %d %s\r\n", res.Version, res.Status, res.Reason)
 	debug("initResponse:\r\n")
 	debug(initResponse)
-	headersResponse := headersMapToString(resp.Headers)
+	headersResponse := headersMapToString(res.Headers)
 	debug("headersResponse:\r\n")
 	debug(headersResponse)
 
@@ -320,16 +321,17 @@ func responseFileWriter(conn net.Conn, resp Http_Response) {
 
 	_, err = bufio.NewReader(file).WriteTo(writer)
 	if err != nil {
-		fmt.Fprintf(conn, "%s %d %s", resp.Version, 500, "Internal Server Error\r\n")
+		fmt.Fprintf(conn, "%s %d %s", res.Version, 500, "Internal Server Error\r\n")
 		handleError("Internal server error writing file.", err)
 		return
 	}
 	writer.Flush()
 }
+*/
 
-func responseWriter(conn net.Conn, resp Http_Response) {
+func responseWriter(conn net.Conn, res Http_Response) {
 	debug("Sending connection response...")
-	response := buildResponseString(resp)
+	response := buildResponseString(res)
 	debug("String returned from buildResponseString()")
 	debug("---------")
 	debug(response)
@@ -349,37 +351,37 @@ func responseWriter(conn net.Conn, resp Http_Response) {
 var routes = make(map[string]func(string, net.Conn, Http_Request) Http_Response)
 
 func rootHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
-	resp := Http_Response{
+	res := Http_Response{
 		Version: HTTPV,
 		Status:  200,
 		Reason:  "OK",
 		Headers: map[string]string{"Content-Type": "text/plain"},
 		Body:    CRLF,
 	}
-	return resp
+	return res
 }
 
 func echoHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
-	resp := Http_Response{
+	res := Http_Response{
 		Version: HTTPV,
 		Status:  200,
 		Reason:  "OK",
 		Headers: map[string]string{"Content-Type": "text/plain"},
 		Body:    pathVals,
 	}
-	return resp
+	return res
 }
 
 func userAgentHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
 	agent := req.Headers["User-Agent"]
-	resp := Http_Response{
+	res := Http_Response{
 		Version: HTTPV,
 		Status:  200,
 		Reason:  "OK",
 		Headers: map[string]string{"Content-Type": "text/plain"},
 		Body:    agent,
 	}
-	return resp
+	return res
 }
 
 func fileRequestHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
@@ -392,9 +394,9 @@ func fileRequestHandler(pathVals string, conn net.Conn, req Http_Request) Http_R
 	if !dirPathExists {
 		debugf("Could not find dir path: %s", DIRPATH)
 	}
-	pathSep := string(os.PathSeparator)
+
 	debugf("filename: %s", filename)
-	fullpath := DIRPATH + pathSep + filename
+	fullpath := DIRPATH + filename
 	debugf("fullpath: %s", fullpath)
 	filePathExists := pathExists(fullpath)
 	if !filePathExists {
@@ -412,42 +414,45 @@ func fileRequestHandler(pathVals string, conn net.Conn, req Http_Request) Http_R
 	}
 
 	// set the body to fullpath, depend on writer to detect file for streaming to writer
-	resp := Http_Response{
+	res := Http_Response{
 		Version: HTTPV,
 		Status:  status,
 		Reason:  reason,
 		Headers: map[string]string{"Content-Type": "application/octet-stream", "Content-Disposition": "attachment; filename=" + filename},
 		Body:    fullpath,
 	}
-	return resp
+	return res
 }
 
-func filePostHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
-	debugf("filePostHandler request with vals: %s", pathVals)
+// return an http-style status int (e.g,. 201,400,500) status message string, and error status
+func uploadHandler(conn net.Conn, fileLength int64, filename string, content string) (int, string, error) {
+	var status int
+	var reason string
+	var errMsg error
 
-	// Look for Content-Length
-	contentLength := req.Headers["Content-Length"]
-	length, err := strconv.Atoi(contentLength)
-	if err != nil {
-		return BAD_REQUEST
-	}
-
+	//TODO
 	// Open file path for writing
-	filePath := DIRPATH + string(os.PathSeparator) + pathVals
-	debugf("Attempting to open filepath: %s", filePath)
+	filePath := DIRPATH + filename
+	debugf("Attempting to upload to filepath: %s", filePath)
 	destFile, err := os.Create(filePath)
 	if err != nil {
-		return SERVER_ERROR
+		status = 500
+		reason = "Internal Server Error"
+		errMsg = fmt.Errorf("Unable to create filepath: %s", filePath)
+		return status, reason, errMsg
 	}
 	defer destFile.Close()
 
+	// Commented out, trying to write waht is passed in via content
 	// Create buffer reader for content
-	reader := bufio.NewReader(conn)
+	debug("Reading request body content...")
+	reader := strings.NewReader(content)
+
 	// Begin writing to file
-	debug("Begin writing file...")
+	debug("Establishing server writer...")
 	bufWriter := bufio.NewWriter(destFile)
 	buf := make([]byte, 1024)
-	remaining := int64(length)
+	remaining := int64(fileLength)
 	for remaining > 0 {
 		readSize := 1024
 		if remaining < int64(readSize) {
@@ -456,12 +461,19 @@ func filePostHandler(pathVals string, conn net.Conn, req Http_Request) Http_Resp
 		n, err := reader.Read(buf[:readSize])
 		if err != nil {
 			debug("Error reading file!")
-			return SERVER_ERROR
+			status = 500
+			reason = "Internal Server Error"
+			errMsg = fmt.Errorf("Unable to read from connection buffer.")
+			return status, reason, errMsg
 		}
+
 		_, err = bufWriter.Write(buf[:n])
 		if err != nil {
 			debug("Error writing file!")
-			return SERVER_ERROR
+			status = 500
+			reason = "Internal Server Error"
+			errMsg = fmt.Errorf("Unable to write to file buffer.")
+			return status, reason, errMsg
 		}
 		remaining -= int64(n)
 
@@ -470,18 +482,49 @@ func filePostHandler(pathVals string, conn net.Conn, req Http_Request) Http_Resp
 		err = bufWriter.Flush()
 		if err != nil {
 			debug("Problem flushing writer!")
-			return SERVER_ERROR
+			status = 500
+			reason = "Internal Server Error"
+			errMsg = fmt.Errorf("Unable to validate and flush file writer.")
+			return status, reason, errMsg
 		}
 	}
-	// Send Response
-	resp := Http_Response{
-		Version: HTTPV,
-		Status:  201,
-		Reason:  "OK",
-		Headers: make(map[string]string),
-		Body:    "" + CRLF,
+	// Succesfully uploaded file.
+	debug("Successfully uploaded file.")
+	status = 201
+	reason = "Created"
+	errMsg = nil
+	return status, reason, errMsg
+}
+
+func filePostHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
+	debugf("filePostHandler request with vals: %s", pathVals)
+	var res Http_Response
+	res.Version = HTTPV
+
+	// Look for Content-Length
+	contentLength := req.Headers["Content-Length"]
+	length, err := strconv.Atoi(contentLength)
+	if err != nil {
+		res = BAD_REQUEST
+		res.Headers["Error"] = "Content-Length header or length value missing."
+		return BAD_REQUEST
 	}
-	return resp
+	debugf("Content-Length header or value missing. Received content length: %v", contentLength)
+
+	status, reason, err := uploadHandler(conn, int64(length), pathVals, req.Body)
+	if err != nil {
+		res = SERVER_ERROR
+		res.Status = status
+		res.Reason = reason
+		res.Headers["Error"] = "Problem with uploading file."
+		return res
+	}
+
+	// Successful file upload
+	res = OK
+	res.Status = status
+	res.Reason = reason
+	return res
 }
 
 func define_routes() {
@@ -498,7 +541,6 @@ func define_routes() {
 
 func connStringToRequest(conn net.Conn) Http_Request {
 
-	requestString := ""
 	reader := bufio.NewReader(conn)
 	debug("bufio reader set, attempt to read all...")
 	// Read lines
@@ -530,29 +572,52 @@ func connStringToRequest(conn net.Conn) Http_Request {
 		}
 		lineCount++
 
+		debugf("Found %d header lines: %s", lineCount, line)
 		if line == CRLF {
 			break // end of headers
 		}
 		lines += line
 	}
 
+	debug("End of headers, building Headers map...")
+	headersMap := headersStringToMap(headers)
+	debug("Headers map built, looking for Content-Type and Content-Length...")
+
 	// Get body content length
 	contentLength := 0
-	for _, line := range strings.Split(headers, CRLF) {
-		if strings.HasPrefix(line, "Content-Length:") {
-			contentLength, _ = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:")))
-			break
-		}
+	contentType := ""
+	contentLength, err := strconv.Atoi(headersMap["Content-Length"])
+	if err != nil {
+		contentLength = 0
 	}
+	debugf("contentLength: %d", contentLength)
+	contentType = strings.TrimSpace(headersMap["Content-Type"])
+	if len(contentType) == 0 {
+		contentType = ""
+	}
+	debugf("contentType: %s", contentType)
 
 	// Read full content length of body
+
+	// Setting a 5-second read deadline to prevent blocking
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	debug("Attempting to get request body...")
 	body := make([]byte, contentLength)
-	_, err := io.ReadFull(reader, body)
+	debugf("Ready to read %d bytes", contentLength)
+	n, err := io.ReadFull(reader, body)
+	debugf("Read %d bytes", n)
 	if err != nil {
-		handleError("Error reading body:", err)
+		if err == io.EOF {
+			debug("Received EOF")
+		} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			handleError("Timeout reading body: ", err)
+		} else {
+			handleError("Error reading body: ", err)
+		}
 		return Http_Request{}
 	}
 
+	debug("Building Http_Request")
 	// Build Http_Request type
 	connRequest := Http_Request{
 		Method:  method,
@@ -561,10 +626,6 @@ func connStringToRequest(conn net.Conn) Http_Request {
 		Headers: headersStringToMap(headers),
 		Body:    string(body),
 	}
-
-	debugf("Headers:\r\n%s", headers)
-	debugf("Body:\r\n%s", string(body))
-	debugf("Received request:\r\n%s", requestString)
 
 	return connRequest
 }
