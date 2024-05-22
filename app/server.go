@@ -34,12 +34,12 @@ func pathExists(path string) bool {
 
 func define_flags() {
 	// Get flags from command line
-	debugOn := flag.Bool("debug-on", true, "turn debugging on")
+	debugOn := flag.Bool("debug-on", false, "turn debugging on")
 	debugOff := flag.Bool("debug-off", false, "turn debugging off")
 	directory := flag.String("directory", "", "directory location")
 	flag.Parse()
 	if *debugOn {
-		DEBUG = true
+		DEBUG = false
 	} else {
 		DEBUG = false
 	}
