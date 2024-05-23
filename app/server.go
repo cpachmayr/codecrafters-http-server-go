@@ -17,7 +17,6 @@ import (
 // App Helpers
 var DEBUGGER bool
 var DIRPATH string
-var connCount int
 
 func handleError(msg string, err error) {
 	fmt.Printf("Encountered error:\n%s\n%v", msg, err)
@@ -36,18 +35,16 @@ func pathExists(path string) bool {
 
 func define_flags() {
 	// Get flags from command line
-	debugOn := flag.Bool("debug-on", false, "turn debugging on")
-	debugOff := flag.Bool("debug-off", false, "turn debugging off")
+	debugger := flag.Bool("debugger", false, "turn debugging on")
 	directory := flag.String("directory", "", "directory location")
 	flag.Parse()
-	if *debugOn {
+	if *debugger == true {
 		DEBUGGER = true
+		debug("Debugger on.")
 	} else {
 		DEBUGGER = false
 	}
-	if *debugOff {
-		DEBUGGER = false
-	}
+
 	DIRPATH = *directory
 	if len(DIRPATH) > 0 {
 		// Add OS separator to the end if needed
@@ -368,24 +365,33 @@ func rootHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response
 }
 
 func echoHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
+	contentLength := "0"
+	if len(pathVals) > 0 {
+		contentLength = strconv.Itoa(len(pathVals))
+	}
 	res := Http_Response{
 		Version: HTTPV,
 		Status:  200,
 		Reason:  "OK",
-		Headers: map[string]string{"Content-Type": "text/plain"},
+		Headers: map[string]string{"Content-Type": "text/plain", "Content-Length": contentLength},
 		Body:    pathVals,
 	}
 	return res
 }
 
 func userAgentHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
-	agent := req.Headers["User-Agent"]
+	contentLength := "0"
+	body := req.Headers["User-Agent"]
+	if len(body) > 0 {
+		contentLength = strconv.Itoa(len(body))
+	}
+
 	res := Http_Response{
 		Version: HTTPV,
 		Status:  200,
 		Reason:  "OK",
-		Headers: map[string]string{"Content-Type": "text/plain"},
-		Body:    agent,
+		Headers: map[string]string{"Content-Type": "text/plain", "Content-Length": contentLength},
+		Body:    body,
 	}
 	return res
 }
