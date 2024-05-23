@@ -647,7 +647,7 @@ func handleConnection(conn net.Conn) {
 	debug("Handling connection...")
 	defer conn.Close()
 	connRequest := connStringToRequest(conn)
-	go handleRequests(conn, connRequest)
+	handleRequests(conn, connRequest)
 }
 
 func main() {
