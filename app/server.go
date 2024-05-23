@@ -663,6 +663,7 @@ func main() {
 	if err != nil {
 		handleError("Failed to bind to 0.0.0.0 (localhost) port 4221", err)
 	}
+	defer listener.Close()
 
 	for {
 		conn, err := listener.Accept()
