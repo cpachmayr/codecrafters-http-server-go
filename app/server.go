@@ -14,7 +14,7 @@ import (
 )
 
 // App Helpers
-var DEBUG bool
+var DEBUGGER bool
 var DIRPATH string
 
 func handleError(msg string, err error) {
@@ -39,12 +39,12 @@ func define_flags() {
 	directory := flag.String("directory", "", "directory location")
 	flag.Parse()
 	if *debugOn {
-		DEBUG = false
+		DEBUGGER = true
 	} else {
-		DEBUG = false
+		DEBUGGER = false
 	}
 	if *debugOff {
-		DEBUG = false
+		DEBUGGER = false
 	}
 	DIRPATH = *directory
 	// Add OS separator to the end if needed
@@ -58,7 +58,7 @@ func define_flags() {
 }
 
 func debug(msg string) {
-	if DEBUG {
+	if DEBUGGER {
 		fmt.Println(msg)
 	}
 }
@@ -81,7 +81,7 @@ func routePatternIsFound(pattern string) bool {
 	}
 }
 func tryRouteHandler(pattern string, value string, conn net.Conn, req Http_Request) (Http_Response, error) {
-	debugf("Trying handler for route: ", pattern)
+	debugf("Trying handler for route: %s", pattern)
 	if handler, exists := routes[pattern]; exists {
 		debug("Found route handler, executing...")
 		response := handler(value, conn, req)
@@ -198,9 +198,9 @@ func buildResponseString(res Http_Response) string {
 	debug("building response string from Http_Response fields...")
 	debug("---------")
 	headers := headersMapToString(res.Headers)
-	debug("Adding Content-Length to headers...")
-	headers += stringByteLenAsString(res.Body)
-	debug("---------")
+	//debug("Adding Content-Length to headers...")
+	//headers += stringByteLenAsString(res.Body)
+	//debug("---------")
 	debug("Built headers string:\r\n")
 	debug(headers)
 	debug("Creating full resposne string...")
@@ -285,49 +285,50 @@ func handleRequests(conn net.Conn, req Http_Request) {
 }
 
 // Response Handlers
-/* func responseFileWriter(value, conn net.Conn, res Http_Response) {
-	debugf("Using responseFileWriter for file: %s", res.Body)
-	// Body is now file, so not awkwardly passing by convention of filePath := res.Body
-	// So we need to create file path from here
+func fileResponseBody(dataPath string, res *Http_Response) (string, error) {
+	debugf("Creating body from file: %s", dataPath)
+	debugf("Calling Handler: %s", res.Headers["Request-Handler"])
 
-	file, err := os.Open(filePath)
+	file, err := os.Open(dataPath)
 	if err != nil {
-		fmt.Fprintf(conn, "%s %d %s\r\n", res.Version, 404, "Not Found\r\n")
-		return
+		res.Status = 404
+		res.Reason = "Not Found"
+		return "Unable to open resource.", err
 	}
 	defer file.Close()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		fmt.Fprintf(conn, "%s %d %s", res.Version, 500, "Internal Server Error\r\n")
-		handleError("Internal server error reading file info.", err)
-		return
+		res.Status = 500
+		res.Reason = "Internal Server Error"
+		return "Unable to get file information.", err
 	}
+	debugf("file.Stat() call returns: %v", fileInfo)
+
 	fileSize := fileInfo.Size()
+	debugf("fileInfo.Size() reports: %d", fileSize)
 	contentLength := fmt.Sprintf("%d", fileSize)
 	res.Headers["Content-Length"] = contentLength
+	debugf("Content-Length header set to: %s", res.Headers["Content-Length"])
 
-	writer := bufio.NewWriter(conn)
-	initResponse := fmt.Sprintf("%s %d %s\r\n", res.Version, res.Status, res.Reason)
-	debug("initResponse:\r\n")
-	debug(initResponse)
-	headersResponse := headersMapToString(res.Headers)
-	debug("headersResponse:\r\n")
-	debug(headersResponse)
-
-	writer.WriteString(initResponse)
-	writer.WriteString(headersResponse)
-	writer.WriteString(CRLF) // end of headers
-
-	_, err = bufio.NewReader(file).WriteTo(writer)
+	//reader := bufio.NewReaderSize(file, 1024)
+	debug("Staring file.Read()")
+	body := make([]byte, fileSize)
+	//	n, err := reader.Read(body)
+	n, err := file.Read(body)
 	if err != nil {
-		fmt.Fprintf(conn, "%s %d %s", res.Version, 500, "Internal Server Error\r\n")
-		handleError("Internal server error writing file.", err)
-		return
+		res.Status = 500
+		res.Reason = "Internal Server Error"
+		return "Unable to read file.", err
 	}
-	writer.Flush()
+	if int64(n) != fileSize {
+		res.Status = 500
+		res.Reason = "Internal Server Error"
+		return "Mismatch in file size and read bytes.", fmt.Errorf("Read %d bytes, expected %d", n, fileSize)
+	}
+	debugf("Expected %v bytes, Read %d bytes.", fileSize, n)
+	return string(body), nil
 }
-*/
 
 func responseWriter(conn net.Conn, res Http_Response) {
 	debug("Sending connection response...")
@@ -385,47 +386,59 @@ func userAgentHandler(pathVals string, conn net.Conn, req Http_Request) Http_Res
 }
 
 func fileRequestHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
-	// Set initial values, presume not found
-	status := 404
-	reason := "File not found."
-	filename := pathVals
+	// Set initial res values, presume not found
+	res := Http_Response{
+		//TODO Set these values, so that filebody can work
+		Version: HTTPV,
+		Status:  404,
+		Reason:  "Not Found",
+		Headers: map[string]string{"Content-Type": "application/octet-stream"},
+		Body:    "",
+	}
 
+	// Set filename from pathVals
+	filename := pathVals
+	debugf("filename: %s", filename)
+	res.Headers["Content-Disposition"] = fmt.Sprintf("attachment; filename=%s", filename)
+
+	// Set directory path
 	dirPathExists := pathExists(DIRPATH)
 	if !dirPathExists {
 		debugf("Could not find dir path: %s", DIRPATH)
 	}
 
-	debugf("filename: %s", filename)
+	// Set Full Path
 	fullpath := DIRPATH + filename
 	debugf("fullpath: %s", fullpath)
+
+	// Check for filepath and update response values
 	filePathExists := pathExists(fullpath)
 	if !filePathExists {
 		debug("Path to file DOES NOT exist!")
-	} else {
-		debug("Path to file exists!")
-		status = 200
-		reason = "OK"
-		file, err := os.Open(fullpath)
-		if err != nil {
-			handleError("File not found!", err)
-			return NOT_FOUND
-		}
-		defer file.Close()
+		res.Status = 404
+		res.Reason = "Not Found"
+		res.Body = fmt.Sprintf("File path not found: %s", fullpath)
+		return res
 	}
 
-	// set the body to fullpath, depend on writer to detect file for streaming to writer
-	res := Http_Response{
-		Version: HTTPV,
-		Status:  status,
-		Reason:  reason,
-		Headers: map[string]string{"Content-Type": "application/octet-stream", "Content-Disposition": "attachment; filename=" + filename},
-		Body:    fullpath,
+	debug("Path to file exists!")
+	res.Status = 200
+	res.Reason = "OK"
+	res.Headers["Request-Handler"] = "file-request-handler"
+
+	debug("Attempting to load body from file...")
+	body, err := fileResponseBody(fullpath, &res)
+	if err != nil {
+		handleError("File not found!", err)
+		return res
 	}
+	res.Body = body
+
 	return res
 }
 
 // return an http-style status int (e.g,. 201,400,500) status message string, and error status
-func uploadHandler(conn net.Conn, fileLength int64, filename string, content string) (int, string, error) {
+func uploadHandler(fileLength int64, filename string, content string) (int, string, error) {
 	var status int
 	var reason string
 	var errMsg error
@@ -511,7 +524,7 @@ func filePostHandler(pathVals string, conn net.Conn, req Http_Request) Http_Resp
 	}
 	debugf("Content-Length header or value missing. Received content length: %v", contentLength)
 
-	status, reason, err := uploadHandler(conn, int64(length), pathVals, req.Body)
+	status, reason, err := uploadHandler(int64(length), pathVals, req.Body)
 	if err != nil {
 		res = SERVER_ERROR
 		res.Status = status
@@ -602,7 +615,7 @@ func connStringToRequest(conn net.Conn) Http_Request {
 	// Setting a 5-second read deadline to prevent blocking
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	debug("Attempting to get request body...")
-	body := make([]byte, contentLength)
+	body := make([]byte, int64(contentLength))
 	debugf("Ready to read %d bytes", contentLength)
 	n, err := io.ReadFull(reader, body)
 	debugf("Read %d bytes", n)
@@ -643,7 +656,7 @@ func main() {
 
 	define_flags()
 	define_routes()
-	if DEBUG {
+	if DEBUGGER {
 		fmt.Println("Debugging turned on")
 	}
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
