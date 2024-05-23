@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,11 +49,14 @@ func define_flags() {
 		DEBUGGER = false
 	}
 	DIRPATH = *directory
-	// Add OS separator to the end if needed
-	dirPathEnd := string(DIRPATH[len(DIRPATH)-1])
-	pathSeparatorFound := dirPathEnd == string(os.PathSeparator)
-	if !pathSeparatorFound {
-		DIRPATH += string(os.PathSeparator)
+	if len(DIRPATH) > 0 {
+		// Add OS separator to the end if needed
+		dirPathEnd := string(DIRPATH[len(DIRPATH)-1])
+		pathSeparatorFound := dirPathEnd == string(os.PathSeparator)
+		if !pathSeparatorFound {
+			DIRPATH += string(os.PathSeparator)
+		}
+
 	}
 	debugf("--directory: %s found: %v", DIRPATH, pathExists(DIRPATH))
 
@@ -349,7 +353,7 @@ func responseWriter(conn net.Conn, res Http_Response) {
 }
 
 // Route Handlers
-
+var routesMutex sync.Mutex
 var routes = make(map[string]func(string, net.Conn, Http_Request) Http_Response)
 
 func rootHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response {
@@ -543,7 +547,7 @@ func filePostHandler(pathVals string, conn net.Conn, req Http_Request) Http_Resp
 
 func define_routes() {
 	debug("Routes being defined...")
-
+	routesMutex.Lock()
 	routes["GET /"] = rootHandler
 	routes["GET /echo/{str}"] = echoHandler
 	routes["GET /user-agent"] = userAgentHandler
@@ -644,8 +648,8 @@ func connStringToRequest(conn net.Conn) Http_Request {
 	return connRequest
 }
 
-func handleConnection(conn net.Conn, count int) {
-	debugf("Handling connection: %d", count)
+func handleConnection(conn net.Conn) {
+	debug("Handling new connection...")
 	defer conn.Close()
 	connRequest := connStringToRequest(conn)
 	handleRequests(conn, connRequest)
@@ -654,7 +658,6 @@ func handleConnection(conn net.Conn, count int) {
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
-	connCount = 0
 
 	define_flags()
 	define_routes()
@@ -673,9 +676,7 @@ func main() {
 			handleError("Error accepting connection.", err)
 			continue
 		}
-		connCount++
-		debugf("handling connection: %d", connCount)
-		go handleConnection(conn, connCount)
+		go handleConnection(conn)
 
 	}
 
