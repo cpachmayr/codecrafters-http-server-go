@@ -16,6 +16,7 @@ import (
 // App Helpers
 var DEBUGGER bool
 var DIRPATH string
+var connCount int
 
 func handleError(msg string, err error) {
 	fmt.Printf("Encountered error:\n%s\n%v", msg, err)
@@ -643,8 +644,8 @@ func connStringToRequest(conn net.Conn) Http_Request {
 	return connRequest
 }
 
-func handleConnection(conn net.Conn) {
-	debug("Handling connection...")
+func handleConnection(conn net.Conn, count int) {
+	debugf("Handling connection: %d", count)
 	defer conn.Close()
 	connRequest := connStringToRequest(conn)
 	handleRequests(conn, connRequest)
@@ -653,6 +654,7 @@ func handleConnection(conn net.Conn) {
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
+	connCount = 0
 
 	define_flags()
 	define_routes()
@@ -671,7 +673,10 @@ func main() {
 			handleError("Error accepting connection.", err)
 			continue
 		}
-		go handleConnection(conn)
+		connCount++
+		debugf("handling connection: %d", connCount)
+		go handleConnection(conn, connCount)
+
 	}
 
 }
