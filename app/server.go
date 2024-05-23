@@ -312,9 +312,9 @@ func fileResponseBody(dataPath string, res *Http_Response) (string, error) {
 	debugf("Content-Length header set to: %s", res.Headers["Content-Length"])
 
 	//reader := bufio.NewReaderSize(file, 1024)
-	debug("Staring file.Read()")
 	body := make([]byte, fileSize)
 	//	n, err := reader.Read(body)
+	debug("Staring file.Read()")
 	n, err := file.Read(body)
 	if err != nil {
 		res.Status = 500
@@ -647,7 +647,7 @@ func handleConnection(conn net.Conn) {
 	debug("Handling connection...")
 	defer conn.Close()
 	connRequest := connStringToRequest(conn)
-	handleRequests(conn, connRequest)
+	go handleRequests(conn, connRequest)
 }
 
 func main() {
