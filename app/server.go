@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"io"
@@ -386,7 +388,27 @@ func define_encoders() {
 
 func gzipCompressor(res *Http_Response) error {
 	debug("Using gzipCompressor")
+	var buf bytes.Buffer
+	uncompressedBytes := len(res.Body)
+
+	gzipWriter := gzip.NewWriter(&buf)
+	_, err := gzipWriter.Write([]byte(res.Body))
+	if err != nil {
+		handleError("Problem with gzip encoder", err)
+		return err
+	}
+
+	err = gzipWriter.Close()
+	if err != nil {
+		handleError("Problem closing gzip encoder", err)
+		return err
+	}
+
+	res.Body = buf.String()
+	contentLength := len(res.Body)
 	res.Headers["Content-Encoding"] = "gzip"
+	res.Headers["Content-Length"] = strconv.Itoa(contentLength)
+	debugf("original bytes: %d, gzip bytes: %d", uncompressedBytes, contentLength)
 	return nil
 }
 
