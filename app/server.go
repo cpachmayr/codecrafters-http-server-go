@@ -362,7 +362,7 @@ func define_encoders() {
 
 func gzipCompressor(res *Http_Response) error {
 	debug("Using gzipCompressor")
-	res.Headers["Accept-Encoding"] = "gzip"
+	res.Headers["Content-Encoding"] = "gzip"
 	return nil
 }
 
