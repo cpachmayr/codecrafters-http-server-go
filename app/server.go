@@ -349,8 +349,32 @@ func responseWriter(conn net.Conn, res Http_Response) {
 	debugf("Sent response: %s", response)
 }
 
-// Compression Handlers
+// Encoding Handlers
 var encoders = make(map[string]func(*Http_Response) error)
+
+func checkEncodingOptions(req *Http_Request, res *Http_Response) {
+	debug("Checking encoding options")
+	// Check if request accepts encoding:
+	_, encoding := req.Headers["Accept-Encoding"]
+	if encoding {
+		// Check for multiple encoding options
+		opts := strings.Split(req.Headers["Accept-Encoding"], ",")
+		for _, opt := range opts {
+			if encoder, exists := encoders[opt]; exists {
+				debugf("Found encoder for type: %s", opt)
+				err := encoder(res)
+				if err != nil {
+					handleError("Problem with encoder", err)
+				}
+				return
+			} else {
+				debugf("Ignoring invalid encoder option: %s", opt)
+			}
+			debugf("No valid encoder found for: %s", req.Headers["Accept-Encoding"])
+		}
+	}
+	return
+}
 
 func define_encoders() {
 	debug("Encoders being defined...")
@@ -394,23 +418,26 @@ func echoHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response
 		Body:    pathVals,
 	}
 
-	// Check if request accepts compression
-	_, encoding := req.Headers["Accept-Encoding"]
-	if encoding {
-		debugf("Accept-Encoding header: %s", req.Headers["Accept-Encoding"])
-		// Check if accepted encoding option is available
-		encodeType := req.Headers["Accept-Encoding"]
-		debugf("ecodeType set to: %s", encodeType)
-		if encoder, exists := encoders[encodeType]; exists {
-			debug("Found encoder.")
-			err := encoder(&res)
-			if err != nil {
-				handleError("Problem with encoder", err)
+	checkEncodingOptions(&req, &res)
+	/*
+		// Check if request accepts compression
+		_, encoding := req.Headers["Accept-Encoding"]
+		if encoding {
+			debugf("Accept-Encoding header: %s", req.Headers["Accept-Encoding"])
+			// Check if accepted encoding option is available
+			encodeType := req.Headers["Accept-Encoding"]
+			debugf("ecodeType set to: %s", encodeType)
+			if encoder, exists := encoders[encodeType]; exists {
+				debug("Found encoder.")
+				err := encoder(&res)
+				if err != nil {
+					handleError("Problem with encoder", err)
+				}
+			} else {
+				debug("Could not find encoder.")
 			}
-		} else {
-			debug("Could not find encoder.")
 		}
-	}
+	*/
 	return res
 }
 
