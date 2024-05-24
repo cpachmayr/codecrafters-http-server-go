@@ -349,6 +349,23 @@ func responseWriter(conn net.Conn, res Http_Response) {
 	debugf("Sent response: %s", response)
 }
 
+// Compression Handlers
+var encoders = make(map[string]func(*Http_Response) error)
+
+func define_encoders() {
+	debug("Encoders being defined...")
+	encoders["gzip"] = gzipCompressor
+
+	debug("Encoders ready.")
+
+}
+
+func gzipCompressor(res *Http_Response) error {
+	debug("Using gzipCompressor")
+	res.Headers["Accept-Encoding"] = "gzip"
+	return nil
+}
+
 // Route Handlers
 var routesMutex sync.Mutex
 var routes = make(map[string]func(string, net.Conn, Http_Request) Http_Response)
@@ -375,6 +392,23 @@ func echoHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response
 		Reason:  "OK",
 		Headers: map[string]string{"Content-Type": "text/plain", "Content-Length": contentLength},
 		Body:    pathVals,
+	}
+
+	// Check if request accepts compression
+	_, encoding := req.Headers["Accept-Encoding"]
+	if encoding {
+		debugf("Accept-Encoding header: %s", req.Headers["Accept-Encoding"])
+		// Check if accepted encoding option is available
+		encodeType := req.Headers["Accept-Encoding"]
+		if encoder, exists := encoders[encodeType]; exists {
+			debug("Found encoder.")
+			err := encoder(&res)
+			if err != nil {
+				handleError("Problem with encoder", err)
+			}
+		} else {
+			debug("Could not find encoder.")
+		}
 	}
 	return res
 }
