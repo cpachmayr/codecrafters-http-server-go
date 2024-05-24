@@ -360,7 +360,7 @@ func checkEncodingOptions(req *Http_Request, res *Http_Response) {
 		// Check for multiple encoding options
 		opts := strings.Split(req.Headers["Accept-Encoding"], ",")
 		for _, opt := range opts {
-			if encoder, exists := encoders[opt]; exists {
+			if encoder, exists := encoders[strings.TrimSpace(opt)]; exists {
 				debugf("Found encoder for type: %s", opt)
 				err := encoder(res)
 				if err != nil {
@@ -370,9 +370,9 @@ func checkEncodingOptions(req *Http_Request, res *Http_Response) {
 			} else {
 				debugf("Ignoring invalid encoder option: %s", opt)
 			}
-			debugf("No valid encoder found for: %s", req.Headers["Accept-Encoding"])
 		}
 	}
+	debugf("No valid encoder found for: %s", req.Headers["Accept-Encoding"])
 	return
 }
 
