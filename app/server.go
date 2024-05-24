@@ -400,6 +400,7 @@ func echoHandler(pathVals string, conn net.Conn, req Http_Request) Http_Response
 		debugf("Accept-Encoding header: %s", req.Headers["Accept-Encoding"])
 		// Check if accepted encoding option is available
 		encodeType := req.Headers["Accept-Encoding"]
+		debugf("ecodeType set to: %s", encodeType)
 		if encoder, exists := encoders[encodeType]; exists {
 			debug("Found encoder.")
 			err := encoder(&res)
@@ -701,6 +702,7 @@ func main() {
 
 	define_flags()
 	define_routes()
+	define_encoders()
 	if DEBUGGER {
 		fmt.Println("Debugging turned on")
 	}
